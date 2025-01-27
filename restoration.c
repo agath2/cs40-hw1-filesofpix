@@ -17,11 +17,13 @@
 #include "table.h"
 #include "seq.h"
 
+#define DEBUG true; 
+
 void getLength(char **currLine, size_t numBytes, int *pixValsSize, 
-                int *patternSize);
-void getPattern(char **currLine, size_t numBytes, int *pixValsSize, 
-                int *patternSize, char **pixVals, char **pattern);
-// void printPgm(Seq_T* ogRows, int width, int height);
+        int *patternSize);
+void getPattern(char **currLine, size_t numBytes, int *alphaSize, 
+        char **pattern);
+void printPgm(Seq_T* ogRows, int width, int height);
 
 /* main
  * 
@@ -47,36 +49,35 @@ int main(int argc, char *argv[])
         }
 
         char* currline = "";
-        char* currPixVals = ""; // cstring to current pixel values
         char* currPattern = ""; // cstring to current injected chars
-        //char* ogPattern = NULL; // cstring to pattern representing valid line
-        size_t numBytes = 0; 
+        char* ogPattern = NULL; // cstring to pattern representing valid line
+        size_t numBytes = 0; // length of entire row
 
-        int pixSize = 0; // size of pixel values 
-        int alphaSize = 0; // size of injected value
+        int alphaSize = 0; // size of injected values
 
-        // set for finding the injectino pattern indicating an original line
-        // Table_T uniqueInjs = Table_new(10, NULL, NULL);
-        // sequence of pointers to char pointers
-        // Seq_T ogRows = Seq_new(70);
+        // table for finding the injectino pattern indicating an original line
+        Table_T uniqueInjs = Table_new(10, NULL, NULL);
+        // sequence containing corrupted og rows
+        Seq_T ogRows = Seq_new(70);
 
         // retrieve data from file 
-        // while (fgetc(inputFile) != EOF) 
-        // {       
-                // // read in a new line from the file
-                // numBytes = readaline(inputFile, &currline);
+        while (fgetc(inputFile) != EOF) 
+        {       
+                // read in a new line from the file
+                numBytes = readaline(inputFile, &currline);
                 
-                // // extract non-numeric string
-                // getLength(&currline, numBytes, &pixSize, &alphaSize); 
-                // getPattern(&currline, numBytes, &pixSize, &alphaSize, 
-                //                 &currPixVals, &currPattern); 
+                // extract injected non-numeric chars
+                getLength(&currline, numBytes, &pixSize, &alphaSize); 
+                getPattern(&currline, numBytes, &pixSize, &alphaSize, 
+                        &currPixVals, &currPattern); 
                 
-        //         if (ogPattern == NULL)
-        //         {
-        //                 // we haven't found the injected pattern yet
-        //         } else {
+                if (ogPattern == NULL)
+                {
+                        // we haven't found the injected pattern yet
                         
-        //         }
+                } else {
+                        
+                }
 
         //         /*
         //         if (ogPattern is NULL)
@@ -109,7 +110,7 @@ int main(int argc, char *argv[])
         //                 }
         //         }
         //         */
-        // }             
+        }             
         // we have now reached end of line
         // errorcheck and see if the pgm file we have right now is valid
 
@@ -119,8 +120,7 @@ int main(int argc, char *argv[])
         
         numBytes = readaline(inputFile, &currline);
         getLength(&currline, numBytes, &pixSize, &alphaSize);
-        getPattern(&currline, numBytes, &pixSize, &alphaSize, 
-                                &currPixVals, &currPattern); 
+        getPattern(&currline, numBytes, &alphaSize, &currPattern); 
         fclose(inputFile); // close the file
 }
 
@@ -174,73 +174,38 @@ void getLength(char **currLine, size_t numBytes, int *pixSize,
 
 /* getPattern
  * 
- * This function takes in a new line of the file and separates its pixel values
- *      from the injections 
+ * This function takes in a new line of the file and extracts its injections
+ *      from the lines 
  * 
  * Parameters: 
  *      char** currline:  A pointer to the cstring of current line read
  *      size_t numBytes:  The length of the line
- *      int* pixSize:     Pointer to int holding the length of pixel values in 
- *                            the line
  *      int* alphaSize:   Pointer to int holding the length of injected chars
- *      char** digitStr:  A pointer to the cstring holding pixel values in the 
- *                            line. A parameter to store result in & implicitly
- *                            return.
  *      char** pattern:   A pointer to the cstring holding injected chars in the 
  *                            line. A parameter to store result in & implicitly
  *                            return.  
  * 
  * Return: Nothing
  * 
- * Expects: pointers and Pointer-pointers to not be NULL
- * 
- * Note: This function  */
-void getPattern(char **currLine, size_t numBytes, int *pixSize, 
-                int *alphaSize, char **digitStr, char **pattern)
+ * Expects: Pointers and Pointer-pointers to not be NULL */
+void getPattern(char **currLine, size_t numBytes, int *alphaSize, 
+        char **pattern)
 {
-        *digitStr = malloc(*pixSize + 1);
+        // create a cstring for injection patterns
         *pattern = malloc(*alphaSize + 1);
 
-        char prev = 'b'; /*(*currLine)[0]*/
         size_t patternIndex = 0;
-        size_t digitIndex = 0;
 
         // loop through entire line
         for (size_t i = 0; i < numBytes; i++) {
-                if (!isdigit((*currLine)[i])) {
-                // if curr is not a num, add it to pattern
+                if(!isdigit((*currLine)[i])) {
+                        // the current char is an injection, add to string
                         (*pattern)[patternIndex] = (*currLine)[i];
                         patternIndex++;
-                } else if (!isdigit(prev) && isdigit((*currLine)[i])) {
-                // if prev is a char and curr is a num, add curr to pixVals
-                        printf("Prev is a char, curr is a digit! Index: %zu\n", i);
-                        (*digitStr)[digitIndex] = ((*currLine)[i]) - '0';
-                        digitIndex++;
-                } else if (isdigit(prev) && isdigit((*currLine)[i])) {
-                // if prev and curr are nums, prev * 10 and add curr to prev
-                        printf("At index: %zu, prev and curr are both digits!\n", i);
-                        int pixV = (int)((*digitStr)[digitIndex - 1]) - '0';
-                        printf("pixV1: %d\n", pixV);
-                        pixV *= 10;
-                        pixV += ((*currLine)[i]) - '0';
-                        printf("pixV: %d\n", pixV);
-                        (*digitStr)[digitIndex - 1] = pixV;
-                        // (*pixVals)[pixValIndex - 1] *= 10; 
-                        // (*pixVals)[pixValIndex - 1] += ((*currLine)[i]);
                 }
-
-                // set prev to curr
-                prev = (*currLine)[i];
         }
-
         // add null terminator to the end of the line
-        (*digitStr)[digitIndex] = '\0';
         (*pattern)[patternIndex] = '\0';
-
-        printf("digitStr: %s\n", (*digitStr));
-        printf("pattern: %s\n", (*pattern));
-        printf("pixSize: %d\n", (*pixSize));
-        printf("alphaSize: %d\n", (*alphaSize));
 }
 
 /* printPgm
