@@ -13,11 +13,12 @@
 #include <stdlib.h>
 #include "readaline.h"
 
-size_t readaline(FILE *inputfd, char **datapp) {
-        if (inpufd == NULL || *datapp == NULL) 
+size_t readaline(FILE *inputfd, char **datapp) 
+{
+        if (inputfd == NULL || *datapp == NULL) 
         {
-                fprintf(stderr, "Error: Invalid input.");
-                exit(EXIT_FAILURE);
+                fprintf(stderr, "Error: Invalid input.\n");
+                exit(1);
         }
 
         char currChar = fgetc(inputfd);
@@ -35,7 +36,8 @@ size_t readaline(FILE *inputfd, char **datapp) {
         {
                 currChar = fgetc(inputfd);
 
-                if(currChar != EOF) {
+                if(currChar != EOF) 
+                {
                         numBytes++;
                 }
         }
@@ -45,19 +47,21 @@ size_t readaline(FILE *inputfd, char **datapp) {
         //check if memory allocation succeeded
         if (*datapp == NULL) 
         {
-                fprintf(stderr, "Error: Memory allocation failed.")
-                exit(EXIT_FAILURE);
+                fprintf(stderr, "Error: Memory allocation failed.\n");
+                exit(1);
         }
 
         // moves file pointer to start of the line
         fseek(inputfd, -numBytes, SEEK_CUR);
 
         // reads line 1 char at a time and stores it in datapp
-        for(int i = 0; i < numBytes; i++) {
-            (*datapp)[i] = (char)fget(inputfd);
+        for (int i = 0; i < numBytes; i++) 
+        {
+                (*datapp)[i] = (char)fgetc(inputfd);
         }
 
+        // printf("print input: %s\n", *datapp);
+        // printf("numbytes: %zu\n", numBytes);
+
         return numBytes;
-
-
 }
