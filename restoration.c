@@ -10,6 +10,7 @@
  */
 
 #include <ctype.h>
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include "atom.h"
@@ -17,14 +18,14 @@
 #include "table.h"
 #include "seq.h"
 
-#define DEBUG true; 
+#define DEBUG true
 
-void getLength(char **currLine, size_t numBytes, int *pixSize, int *alphaSize);
+void getLength(char **currLine, size_t numBytes, int *alphaSize);
 void getPattern(char **currLine, size_t numBytes, int *alphaSize, 
         char **pattern);
-void addToSeq(char** ogRow, Seq_T* ogRows, int height);
-bool isOriginal(char** pattern, char** ogPattern, int pSize);
-void printPgm(Seq_T* ogRows, int width, int height);
+void addToSeq(char** ogRow, struct Seq_T* ogRows, int height);
+bool isOriginal(char** pattern, const char** ogPattern, int pSize);
+void printPgm(struct Seq_T* ogRows, int width, int height);
 
 /*** NOTE: should make a struct for storing pgm header info (height, width, etc.) ***/
 
@@ -39,56 +40,62 @@ void printPgm(Seq_T* ogRows, int width, int height);
  * Return: return 0 if the program executed successfully; exit(1) if the program
  *      had errors
  * 
- * Expects: the name of the pnm file to be opened */
+ * Expects: the name of the pnm file to be opened 
+ * 
+ * Note: 
+ *      firstOgLine is first set to empty string; when we use Table_put(), if
+ *      there are no collisions, Table_put will return NULL and firstOgLine will
+ *      be set to NULL. When a collision happens, Table_put() will return the 
+ *      line associated with the colliding key. 
+ * 
+ *      Atoms are used to compare char** addresses and find duplicate char** */
 int main(int argc, char *argv[])
 {
         FILE *inputFile;
         
-        // error check
+        /* error check */
         if (argc == 1) {
                 inputFile = stdin;
         } else {
                 inputFile = fopen(argv[1], "r");
         }
 
-        char* firstOgLine = ""; // cstring to first valid line
+        char* firstOgLine = ""; /* first valid line */
         char* currline = "";
-        char* currPattern = ""; // cstring to current injected chars
-        char* ogPattern = NULL; // cstring to pattern representing valid line
-        size_t numBytes = 0; // length of entire row
+        char* currPattern = ""; /* current injected chars */
+        const char* ogPattern = NULL; /* pattern representing valid line */
+        size_t numBytes = 0; /* length of entire row */
 
-        int alphaSize = 0; // size of injected values
+        int alphaSize = 0; /* size of injected values */
 
         int height = 0;
-        int width = 0; // width and height of the pgm 
+        int width = 0; /* width and height of the pgm */
 
-        // table for finding the injectino pattern indicating an original line
-        Table_T* uniqueInjs = Table_new(10, NULL, NULL);
-        // sequence containing corrupted og rows
-        Seq_T* ogRows = Seq_new(70);
+        /* table for finding the injection pattern indicating an ogline */
+        struct Table_T* uniqueInjs = Table_new(10, NULL, NULL);
+        /* sequence containing corrupted og rows */
+        struct Seq_T* ogRows = Seq_new(70);
 
-        // retrieve data from file 
+        /* retrieve data from file */
         while (fgetc(inputFile) != EOF) 
         {       
-                // read in a new line from the file
+                /* read in a new line from the file */
                 numBytes = readaline(inputFile, &currline);
                 
-                // extract injected non-numeric chars
-                getLength(&currline, numBytes, &pixSize, &alphaSize); 
+                /* extract injected non-numeric chars */
+                getLength(&currline, numBytes, &alphaSize); 
                 getPattern(&currline, numBytes, &alphaSize, &currPattern); 
                 
                 if (ogPattern == NULL) {
-                        // we haven't found the injected pattern yet
-                        // create an atom for injected chars
-                        char* injected = Atom_new(currPattern, alphaSize); 
+                        /* we haven't found the injected pattern yet */
+                        const char* injected = Atom_new(currPattern, alphaSize); /** NOTE: Adds a COPY of the sequence into atom table */
                         firstOgLine = Table_put(uniqueInjs, injected, currline); 
-                        /*** NOTE: will currline get deleted? How will memory be released? ***/
 
                         if (firstOgLine == NULL) {
-                                // we haven't encountered a collision in table
+                                /* we haven't encountered a collision in table */
                                 printf("A unique pattern! %s\n", injected);
 
-                        } else if (*firstOgLine == "" && DEBUG) {
+                        } else if (*firstOgLine == '\0' && DEBUG) {
                                 /* DEBUG CONDITION: if entered this condition, 
                                 something is wrong -- ogPattern can only be NULL
                                 or a pointer to a valid cstring */
@@ -96,46 +103,41 @@ int main(int argc, char *argv[])
                                 exit(1);
 
                         } else {
-                                // we have found the ogPattern!
+                                /* we have found the ogPattern! */
                                 printf("Aha! A recurring pattern: %s\n", injected);
-                                // record the pattern
-                                ogPattern = injected /*** NOTE: REMEMBER ogPattern is an ATOM  ***/
+                                /* record the pattern */
+                                ogPattern = injected; /*** NOTE: REMEMBER ogPattern is an ATOM  ***/
 
-                                // add firstOgLine to sequence
+                                /* add firstOgLine to sequence */
                                 addToSeq(&firstOgLine, ogRows, 1);
-                                // add current line to sequence
+                                /* add current line to sequence */
                                 addToSeq(&currline, ogRows, 2); 
 
-                                // update height
+                                /* update height */
                                 height = 2; 
                                 printf("Finished adding first and second ogLines to Seq!\n");
                         }
                 } else {
                         // we have already found the pattern, horray!
                         if (isOriginal(&currPattern, &ogPattern, alphaSize)) {
-                                // currline is an origial line
+                                /* currline is an origial line */
                                 height++; 
                                 addToSeq(&currline, ogRows, height);
 
                                 printf("Found an original line! Injected Seq: %s. Height is now %d", currPattern, height);
+                        } else {
+                                /* currline is not original, release memory */ 
+                                free(currline);
                         }
                 }
+                free(currPattern); /* release memory for currPattern */
         }             
-        // we have now reached end of line
-        // errorcheck and see if the pgm file we have right now is valid
-        
-        // valid, print out
-        printPnm();
-        
-        if (DEBUG) {
-                numBytes = readaline(inputFile, &currline);
-                getLength(&currline, numBytes, &pixSize, &alphaSize);
-                getPattern(&currline, numBytes, &alphaSize, &currPattern); 
-        }
+        /* print out pgm */
+        printPgm(ogRows, width, height);
 
-        Table_free(&uniqueInjs); // free the table
-        Seq_free(&ogRows); // free the sequence 
-        fclose(inputFile); // close the file
+        Table_free(&uniqueInjs); /* free the table */
+        Seq_free(&ogRows); /* free the sequence */
+        fclose(inputFile); /* close the file */
 }
 
 /* getLength
@@ -146,8 +148,6 @@ int main(int argc, char *argv[])
  * Parameters:
  *      char** currLine:  pointer to cstring holding current line
  *      size_t numBytes:  the length of the current line
- *      int* pixValsSize: parameter to store result in, implicitly returns the
- *                            size of the pixel values size
  *      int* patterSize:  parameter to store result in, implicitly returns the
  *                            size of the injected sequence size
  * 
@@ -157,43 +157,16 @@ int main(int argc, char *argv[])
  * 
  * Note: This function is structured around making sure it doesn't count every
  *      individual digits of a integer as a separate int needing 4 bytes. */
-void getLength(char **currline, size_t numBytes, /*int *pixSize,*/ int *alphaSize)
+void getLength(char **currline, size_t numBytes, int *alphaSize)
 {              
-        // loop thru current line, count number of injected chars
-        for(size_t i = 0; i < numBytes; i++) 
+        /* loop thru current line, count number of injected chars */
+        for (size_t i = 0; i < numBytes; i++) 
         {
-                if(!isdigit((*currline)[i])) {
-                        // current char is an injection
+                if (!isdigit((*currline)[i])) {
+                        /* current char is an injection */
                         (*alphaSize)++;
                 }
         }
-        // char prev = (*currLine)[0];
-        
-        // // loops through entire line
-        // for (size_t i = 0; i < numBytes; i++) {
-        //         if (!isdigit((*currLine)[i]) && isdigit(prev)) {
-        //                 // checks the curr char is a char and prev char is a num
-        //                 (*pixSize)++;
-        //                 (*alphaSize)++;
-        //                 if (DEBUG) {
-        //                         printf("Current char is alpha, prev is int! Index at: %zu\n", i);
-        //                 }      
-        //         } else if (!isdigit((*currLine)[i])) {
-        //                 // checks that curr is a char
-        //                 (*alphaSize)++;
-        //                 if (DEBUG) {
-        //                         printf("Current char is alpha! Index at: %zu\n", i);
-        //                 } 
-        //         }
-        //         // set prev to curr
-        //         prev = (*currLine)[i]; 
-        // }
-        
-        // // if last char is a number, increment pixValsSize by 1 to make
-        // // sure it gets counted
-        // if (isdigit((*currLine)[numBytes - 1])) {
-        //         (*pixSize)++;
-        // }
 }
 
 /* getPattern
@@ -215,20 +188,20 @@ void getLength(char **currline, size_t numBytes, /*int *pixSize,*/ int *alphaSiz
 void getPattern(char **currLine, size_t numBytes, int *alphaSize, 
         char **pattern)
 {
-        // create a cstring for injection patterns
+        /* create a cstring for injection patterns */
         *pattern = malloc(*alphaSize + 1);
 
         size_t patternIndex = 0;
 
-        // loop through entire line
+        /* loop through entire line */
         for (size_t i = 0; i < numBytes; i++) {
                 if (!isdigit((*currLine)[i])) {
-                        // the current char is an injection, add to string
+                        /* the current char is an injection, add to string */
                         (*pattern)[patternIndex] = (*currLine)[i];
                         patternIndex++;
                 }
         }
-        // add null terminator to the end of the line
+        /* add null terminator to the end of the line */
         (*pattern)[patternIndex] = '\0';
 }
 
@@ -246,12 +219,12 @@ void getPattern(char **currLine, size_t numBytes, int *alphaSize,
  * Return: Nothing.
  * 
  * Expects: char** to not be NULL */
-void addToSeq(char** ogRow, Seq_T* ogRows, int height)
+void addToSeq(char** ogRow, struct Seq_T* ogRows, int height)
 {
-        Seq_put(&ogRows, height - 1, &ogRow); // height - 1 to convert to index
+        Seq_put(ogRows, height - 1, &ogRow); /* height - 1, convert to index */
 
         if (DEBUG) {
-                printf("Added line %s to index %d in Seq!\n", &ogRow, &height);
+                printf("Added line %s to index %d in Seq!\n", *ogRow, height);
         }
 }
 
@@ -267,16 +240,16 @@ void addToSeq(char** ogRow, Seq_T* ogRows, int height)
  * Returns: A boolean value; true if is ogLine, false otherwise
  * 
  * Expects: both char** to be not NULL */
-bool isOriginal(char** pattern, char** ogPattern, int pSize)
+bool isOriginal(char** pattern, const char** ogPattern, int pSize)
 {       
-        // check if they are the same length
+        /* check if they are the same length */
         if (Atom_length(*ogPattern) != pSize) {
                 return false;
         }
 
         for (int i = 0; i < pSize; i++) {
                 if ((*pattern)[i] != (*ogPattern)[i]) {
-                        // injected patterns not matching 
+                        /* injected patterns not matching */
                         return false;
                 }
         }
@@ -301,42 +274,44 @@ bool isOriginal(char** pattern, char** ogPattern, int pSize)
  * 
  * Note: This function also error checks & is responsible for making sure that 
  *      the result is a valid pgm */
-void printPgm(Seq_T* ogRows, int width, int height)
+void printPgm(struct Seq_T* ogRows, int width, int height)
 {
-        // print header
-        printf("P5\n%d %d\n255\n", width, height);
-        // print raster
+        printf("P5\n%d %d\n255\n", width, height); /* print header */
+        /* print raster */
         char** currline = NULL;
         char* prevChar = NULL;
-        int pixVal = 0; 
-        // loop thru ogRows, print out
-        for (int i = 0; i < Seq_length(*ogRows); i++) 
+        int pixVal = 0;
+        /* loop thru ogRows, print out */
+        for (int i = 0; i < Seq_length(ogRows); i++) 
         {
-                // retreive a line
-                currline = Seq_get(*ogRows, i);
-
-                // loop thru the corrupted line
+                /* retreive a line */
+                currline = Seq_get(ogRows, i);
+                /* loop thru the corrupted line */
                 for (int j = 0; (*currline)[j] != '\0'; j++) 
                 {
-                        if(isdigit((*currline)[j])) {
-                                // current character is a digit, add to pixVal
-                                pixVal = (pixVal * 10) + (*currline)[j] 
-                                /** NOTE: Do we need to cast (*currline)[j] into int */
+                        if (isdigit((*currline)[j])) {
+                                /* current char is a digit, add to pixVal */
+                                pixVal = (pixVal * 10) + (*currline)[j]; 
                         } else {
-                                // current char is an injection
-                                if(prevChar != NULL && isdigit(*prevChar)) {
-                                        // a pixel value has just ended
-                                        printf("%c", pixVal);
-                                        // reset pixVal
-                                        pixVal = 0;
+                                /* current char is an injection */
+                                if (prevChar != NULL && isdigit(*prevChar)) {
+                                        /* a pixel value has just ended */
+
+                                        if (pixVal > 255) { /* errorcheck */
+                                                printf("Invalid pix value!\n");
+                                                exit(1);
+                                        }
+                                
+                                        printf("%c", pixVal); /* print ASCII */
+                                        pixVal = 0; /* reset pixVal */
                                 }
-                                // add a newline if we are at the end of a row
-                                if((*currline)[j] == '\n') {
+                                /* add a newline if we're at the end of a row */
+                                if ((*currline)[j] == '\n') {
                                         printf("\n");
                                 }
                         }
-                        // set prev char to current 
-                        prevChar = (*currline)[j];
+                        /* set prev char to current char */
+                        *prevChar = (*currline)[j];
                 }
         }
 }
