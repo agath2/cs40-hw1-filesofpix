@@ -19,8 +19,7 @@
 
 #define DEBUG true; 
 
-void getLength(char **currLine, size_t numBytes, int *pixValsSize, 
-        int *patternSize);
+void getLength(char **currLine, size_t numBytes, int *pixSize, int *alphaSize);
 void getPattern(char **currLine, size_t numBytes, int *alphaSize, 
         char **pattern);
 void addToSeq(char** ogRow, Seq_T* ogRows, int height);
@@ -64,9 +63,9 @@ int main(int argc, char *argv[])
         int width = 0; // width and height of the pgm 
 
         // table for finding the injectino pattern indicating an original line
-        Table_T uniqueInjs = Table_new(10, NULL, NULL);
+        Table_T* uniqueInjs = Table_new(10, NULL, NULL);
         // sequence containing corrupted og rows
-        Seq_T ogRows = Seq_new(70);
+        Seq_T* ogRows = Seq_new(70);
 
         // retrieve data from file 
         while (fgetc(inputFile) != EOF) 
@@ -76,8 +75,7 @@ int main(int argc, char *argv[])
                 
                 // extract injected non-numeric chars
                 getLength(&currline, numBytes, &pixSize, &alphaSize); 
-                getPattern(&currline, numBytes, &pixSize, &alphaSize, 
-                        &currPixVals, &currPattern); 
+                getPattern(&currline, numBytes, &alphaSize, &currPattern); 
                 
                 if (ogPattern == NULL) {
                         // we haven't found the injected pattern yet
@@ -104,9 +102,9 @@ int main(int argc, char *argv[])
                                 ogPattern = injected /*** NOTE: REMEMBER ogPattern is an ATOM  ***/
 
                                 // add firstOgLine to sequence
-                                addToSeq(&firstOgLine, &ogRows, 1);
+                                addToSeq(&firstOgLine, ogRows, 1);
                                 // add current line to sequence
-                                addToSeq(&currline, &ogRows, 2); 
+                                addToSeq(&currline, ogRows, 2); 
 
                                 // update height
                                 height = 2; 
@@ -117,7 +115,7 @@ int main(int argc, char *argv[])
                         if (isOriginal(&currPattern, &ogPattern, alphaSize)) {
                                 // currline is an origial line
                                 height++; 
-                                addToSeq(&currline, &ogRows, height);
+                                addToSeq(&currline, ogRows, height);
 
                                 printf("Found an original line! Injected Seq: %s. Height is now %d", currPattern, height);
                         }
@@ -125,7 +123,7 @@ int main(int argc, char *argv[])
         }             
         // we have now reached end of line
         // errorcheck and see if the pgm file we have right now is valid
-        validOrNot();
+        
         // valid, print out
         printPnm();
         
@@ -135,7 +133,8 @@ int main(int argc, char *argv[])
                 getPattern(&currline, numBytes, &alphaSize, &currPattern); 
         }
 
-        Seq_free(&uniqueInjs); // free the sequence
+        Table_free(&uniqueInjs); // free the table
+        Seq_free(&ogRows); // free the sequence 
         fclose(inputFile); // close the file
 }
 
@@ -158,36 +157,43 @@ int main(int argc, char *argv[])
  * 
  * Note: This function is structured around making sure it doesn't count every
  *      individual digits of a integer as a separate int needing 4 bytes. */
-void getLength(char **currLine, size_t numBytes, int *pixSize, 
-                int *alphaSize)
-{
-        char prev = (*currLine)[0];
-        
-        // loops through entire line
-        for (size_t i = 0; i < numBytes; i++) {
-                if (!isdigit((*currLine)[i]) && isdigit(prev)) {
-                        // checks the curr char is a char and prev char is a num
-                        (*pixSize)++;
+void getLength(char **currline, size_t numBytes, /*int *pixSize,*/ int *alphaSize)
+{              
+        // loop thru current line, count number of injected chars
+        for(size_t i = 0; i < numBytes; i++) 
+        {
+                if(!isdigit((*currline)[i])) {
+                        // current char is an injection
                         (*alphaSize)++;
-                        if (DEBUG) {
-                                printf("Current char is alpha, prev is int! Index at: %zu\n", i);
-                        }      
-                } else if (!isdigit((*currLine)[i])) {
-                        // checks that curr is a char
-                        (*alphaSize)++;
-                        if (DEBUG) {
-                                printf("Current char is alpha! Index at: %zu\n", i);
-                        } 
                 }
-                // set prev to curr
-                prev = (*currLine)[i]; 
         }
+        // char prev = (*currLine)[0];
         
-        // if last char is a number, increment pixValsSize by 1 to make
-        // sure it gets counted
-        if (isdigit((*currLine)[numBytes - 1])) {
-                (*pixSize)++;
-        }
+        // // loops through entire line
+        // for (size_t i = 0; i < numBytes; i++) {
+        //         if (!isdigit((*currLine)[i]) && isdigit(prev)) {
+        //                 // checks the curr char is a char and prev char is a num
+        //                 (*pixSize)++;
+        //                 (*alphaSize)++;
+        //                 if (DEBUG) {
+        //                         printf("Current char is alpha, prev is int! Index at: %zu\n", i);
+        //                 }      
+        //         } else if (!isdigit((*currLine)[i])) {
+        //                 // checks that curr is a char
+        //                 (*alphaSize)++;
+        //                 if (DEBUG) {
+        //                         printf("Current char is alpha! Index at: %zu\n", i);
+        //                 } 
+        //         }
+        //         // set prev to curr
+        //         prev = (*currLine)[i]; 
+        // }
+        
+        // // if last char is a number, increment pixValsSize by 1 to make
+        // // sure it gets counted
+        // if (isdigit((*currLine)[numBytes - 1])) {
+        //         (*pixSize)++;
+        // }
 }
 
 /* getPattern
@@ -278,14 +284,6 @@ bool isOriginal(char** pattern, char** ogPattern, int pSize)
         return true;
 }
 
-/* validOrNot
- * 
- * This function checks if the pgm so far is a valid pgm (i.e., is there enough
- *      rows and columns, etc.)
- * 
- * Parameters:
- * */
-
 /* printPgm
  * 
  * This function receives sequence of original lines of the pgm and prints out
@@ -305,7 +303,42 @@ bool isOriginal(char** pattern, char** ogPattern, int pSize)
  *      the result is a valid pgm */
 void printPgm(Seq_T* ogRows, int width, int height)
 {
-                        
+        // print header
+        printf("P5\n%d %d\n255\n", width, height);
+        // print raster
+        char** currline = NULL;
+        char* prevChar = NULL;
+        int pixVal = 0; 
+        // loop thru ogRows, print out
+        for (int i = 0; i < Seq_length(*ogRows); i++) 
+        {
+                // retreive a line
+                currline = Seq_get(*ogRows, i);
+
+                // loop thru the corrupted line
+                for (int j = 0; (*currline)[j] != '\0'; j++) 
+                {
+                        if(isdigit((*currline)[j])) {
+                                // current character is a digit, add to pixVal
+                                pixVal = (pixVal * 10) + (*currline)[j] 
+                                /** NOTE: Do we need to cast (*currline)[j] into int */
+                        } else {
+                                // current char is an injection
+                                if(prevChar != NULL && isdigit(*prevChar)) {
+                                        // a pixel value has just ended
+                                        printf("%c", pixVal);
+                                        // reset pixVal
+                                        pixVal = 0;
+                                }
+                                // add a newline if we are at the end of a row
+                                if((*currline)[j] == '\n') {
+                                        printf("\n");
+                                }
+                        }
+                        // set prev char to current 
+                        prevChar = (*currline)[j];
+                }
+        }
 }
 
 
