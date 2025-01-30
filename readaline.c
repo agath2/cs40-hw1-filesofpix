@@ -33,7 +33,12 @@ size_t readaline(FILE *inputfd, char **datapp)
 {
         // error check user input 
         if (inputfd == NULL || *datapp == NULL) {
-                fprintf(stderr, "Error: Invalid input.\n");
+                fprintf(stderr, "Error: Invalid input. inputfd NULL\n");
+                exit(1);
+        }
+
+        if (*datapp == NULL) {
+                fprintf(stderr, "Error: Invalid input. datapp NULL\n");
                 exit(1);
         }
 
