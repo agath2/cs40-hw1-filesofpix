@@ -5,8 +5,23 @@
  *     
  *     CS40 hw1 FilesofPix
  *
- *     Summary: 
+ *     Summary: This is the .c file of the restoration program. This program 
+ *              takes in a corrupted pgm file and restores it to its former 
+ *              glory. 
  * 
+ *              The main data structures used in this implementation are the 
+ *              Hanson table and sequence. The Hason table is used to hold 
+ *              key-value pairs of char*s to injections and char*s to the line.
+ *              Tables serve the use of finding the recurring injection sequence
+ *              indicating an original line of the pgm. 
+ *              
+ *              The Hanson sequence is used to hold all original lines of the 
+ *              pgm. The length of this sequence is equal to the height of the 
+ *              pgm. It is a sequence of char*s. 
+ * 
+ *              The output of this program will be printed to stdout. Inputs
+ *              are given as plain pgms (P2), restoration will restore the pgm
+ *              to its raw form (P5).
  */
 
 #include <ctype.h>
@@ -24,11 +39,9 @@
 int getLength(char **currline, size_t numBytes, int *alphaSize, int *pixSize);
 void getPattern(char **currLine, size_t numBytes, int *alphaSize, 
         char **pattern);
-void addToSeq(char** ogRow, struct Seq_T* ogRows, int height);
+void addToSeq(char** ogRow, struct Seq_T* ogRows);
 bool isOriginal(char** pattern, const char** ogPattern, int pSize);
 void printPgm(struct Seq_T* ogRows, int width, int height);
-
-/*** NOTE: should make a struct for storing pgm header info (height, width, etc.) ***/
 
 /* main
  * 
@@ -70,8 +83,7 @@ int main(int argc, char *argv[])
         int alphaSize = 0; /* size of injected values */
         int pixSize = 0; /* size of digit values*/
 
-        int height = 0;
-        // int width = 0; /* width and height of the pgm */
+        int height = 0; /* height of the pgm */
 
         /* table for finding the injection pattern indicating an ogline */
         struct Table_T* uniqueInjs = Table_new(10, NULL, NULL);
@@ -82,59 +94,45 @@ int main(int argc, char *argv[])
         while (true) 
         {       
                 printf("Gonna read a line!\n");
+
                 /* read in a new line from the file */
                 numBytes = readaline(inputFile, &currline);
-
                 if (numBytes == 0) {
                         // reading past end of line
+                        printf("numBytes is zero, we read past eof! Breaking..\n");
                         break;
                 }
                 
                 /* extract injected non-numeric chars */
-                int status = getLength(&currline, numBytes, &alphaSize, &pixSize); 
-                if (status < 0) {
-                        // current line is a fake row and is skipped
+                if (getLength(&currline, numBytes, &alphaSize, &pixSize) < 0) {
+                        /* current line is a fake row and is skipped */
+                        printf("current line is a fake row, skipping this line..\n");
                         continue;
                 }
-
                 getPattern(&currline, numBytes, &alphaSize, &currPattern); 
                 printf("currLine: %s", currline);
                 
                 if (ogPattern == NULL) {
                         /* we haven't found the injected pattern yet */
-                        const char* injected = Atom_new(currPattern, alphaSize); /** NOTE: Adds a COPY of the sequence into atom table */
+                        const char* injected = Atom_new(currPattern, alphaSize);
                         firstOgLine = Table_put(uniqueInjs, injected, currline); 
 
                         if (firstOgLine == NULL) {
                                 /* we haven't encountered a collision in table */
                                 printf("A unique pattern! %s\n", injected);
 
-                        } else if (*firstOgLine == '\0' && DEBUG) {
-                                /* DEBUG CONDITION: if entered this condition, 
-                                something is wrong -- ogPattern can only be NULL
-                                or a pointer to a valid cstring */
-                                printf("ERROR: FirstOgLine is not being updated by Table!\n");
-                                exit(1);
-
                         } else {
                                 /* we have found the ogPattern! */
                                 printf("Aha! A recurring pattern: %s\n", injected);
                                 /* record the pattern */
-                                ogPattern = injected; /*** NOTE: REMEMBER ogPattern is an ATOM  ***/
-                                // width = (int)numBytes - alphaSize; 
-
-                                // printf("Calculated width of pgm is %d\n", width);
-
-                                if (ogRows == NULL) {
-                                        printf("Sequence pointer is NULL!\n");
-                                }
+                                ogPattern = injected; 
 
                                 printf("About to add first line into seq...\n");
                                 /* add firstOgLine to sequence */
-                                addToSeq(&firstOgLine, ogRows, 1);
+                                addToSeq(&firstOgLine, ogRows);
                                 /* add current line to sequence */
                                 printf("About to add second line into seq...\n");
-                                addToSeq(&currline, ogRows, 2); 
+                                addToSeq(&currline, ogRows); 
 
                                 /* update height */
                                 height = 2; 
@@ -146,7 +144,7 @@ int main(int argc, char *argv[])
                                 /* currline is an origial line */
                                 height++; 
                                 printf("Found an original line! Going to call addToSeq...\n");
-                                addToSeq(&currline, ogRows, height);
+                                addToSeq(&currline, ogRows);
 
                                 printf("Returned from addToSeq! Injected Seq: %s. Height is now %d", currPattern, height);
                         } else {
@@ -157,8 +155,7 @@ int main(int argc, char *argv[])
                 alphaSize = 0; /* reset alphaSize */
                 free(currPattern); /* release memory for currPattern */
         }             
-        /* print out pgm */
-        printPgm(ogRows, pixSize, height);
+        printPgm(ogRows, pixSize, height); /* print out pgm */
 
         Table_free(&uniqueInjs); /* free the table */
         Seq_free(&ogRows); /* free the sequence */
@@ -188,25 +185,19 @@ int main(int argc, char *argv[])
 int getLength(char **currline, size_t numBytes, int *alphaSize, int *pixSize)
 {     
         printf("Entered getLength!\n");
-        char prevChar = 'b';
+        char prevChar = 'b'; /* b is an arbitrary placeholder */
         int currPixLen = 0;
         *alphaSize = 0;
         *pixSize = 0;
         /* loop thru current line, count number of injected chars */
         for (size_t i = 0; i < numBytes; i++) 
         {
-                // if (!isdigit((*currline)[i])) {
-                //         /* current char is an injection */
-                //         (*alphaSize)++;
-                // }
-
-                // 
                 if (!isdigit((*currline)[i]) && isdigit(prevChar)) {
-                        // check value of valid digits (0-255)
+                        /* check value of valid digits (0-255) */
                         if (currPixLen >= 3) {
                                 int sum = 0;
                                 if(currPixLen == 3) {
-                                        // caluculates value of 3 digit number
+                                        /* caluculate value of 3 digit number */
                                         sum += (int)(*currline)[i - 1];
                                         sum += (*currline)[i - 2] * 10; 
                                         sum += (*currline)[i - 3] * 100;
@@ -215,24 +206,18 @@ int getLength(char **currline, size_t numBytes, int *alphaSize, int *pixSize)
                                         return -1;
                                 }
                         }
-
                         (*pixSize)++;
-                        // reset the current pixel length
-                        currPixLen = 0;
+                        currPixLen = 0; /* reset the current pixel length */
                 }
-
-                // increment curr length of the nums and chars
+                /* increment curr length of the nums and chars */
                 if (isdigit((*currline)[i])) {
                         currPixLen++;
                 } else {
                         (*alphaSize)++;
                 }
 
-                // set prev to curr
-                prevChar = (*currline)[i];
-                
+                prevChar = (*currline)[i]; /* set prev to curr */
         }
-
         printf("Going to exit from getLength, pattern size is %d\n", (*alphaSize));
         return 0;
 }
@@ -282,12 +267,11 @@ void getPattern(char **currLine, size_t numBytes, int *alphaSize,
  *                      line of the pgm
  *      Seq_T* ogRows: a passed-by-reference sequence with char** elements; each
  *                      index holds an ogRow
- *      int height:    The height of the pgm so far.
  * 
  * Return: Nothing.
  * 
  * Expects: char** to not be NULL */
-void addToSeq(char** ogRow, struct Seq_T* ogRows, int height)
+void addToSeq(char** ogRow, struct Seq_T* ogRows)
 {       
         printf("In addToSeq()!\n");
 
@@ -297,10 +281,9 @@ void addToSeq(char** ogRow, struct Seq_T* ogRows, int height)
         strcpy(lineDup, *ogRow); /* copy contents into dup */
 
         Seq_addhi(ogRows, lineDup);
-        // Seq_put(ogRows, height, &ogRow); /* height - 1, convert to index */
 
         if (DEBUG) {
-                printf("Added line %s to index %d in Seq!\n", *ogRow, height);
+                printf("Added line %s to Seq!\n", *ogRow);
         }
 }
 
@@ -353,36 +336,22 @@ bool isOriginal(char** pattern, const char** ogPattern, int pSize)
 void printPgm(struct Seq_T* ogRows, int width, int height)
 {
         printf("P5\n%d %d\n255\n", width, height); /* print header */
-        /* print raster */
-        char* currline = NULL;
+
+        char* currline = NULL; /* print raster */
         char prevChar = '\0';
         int pixVal = 0;
-
-        // printf("About to print raster, size of seq is %d\n", Seq_length(ogRows));
-
         /* loop thru ogRows, print out */
         for (int i = 0; i < Seq_length(ogRows); i++) 
         {       
-                // printf("Read in another row, seq index %d\n", i);
-                // if (currline == NULL) {
-                //         printf("Before calling Seq_get, currline is NULL\n");
-                // }
-                
                 /* retreive a line */
                 currline = Seq_get(ogRows, i);
-                
-                if (currline == NULL) {
-                        printf("CURRLINE IS NULL\n");
-                }
 
-                // printf("Currline contents: %s\n", (currline));
                 if (currline == NULL) {
                         printf("The line we are about to print doesn't exist haha\n");
+                        exit(1);
                 }
 
                 /* loop thru the corrupted line */
-                // char currchar = (currline)[0];
-                // printf("The first char in the line is: %c\n", currchar);
                 for (int j = 0; (currline)[j] != '\0'; j++) 
                 {       
                         // printf("Entered for loop, row index: %d, col index: %d\n", i, j);
@@ -394,12 +363,6 @@ void printPgm(struct Seq_T* ogRows, int width, int height)
                                 /* current char is an injection */
                                 if (prevChar != '\0' && isdigit(prevChar)) {
                                         /* a pixel value has just ended */
-
-                                        if (pixVal > 255) { /* errorcheck */
-                                                printf("Invalid pix value!, i: %d, j: %d\n", i, j);
-                                                exit(1);
-                                        }
-                                
                                         printf("%d ", pixVal); /* print ASCII */
                                         pixVal = 0; /* reset pixVal */
                                 }

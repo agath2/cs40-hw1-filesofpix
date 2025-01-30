@@ -5,8 +5,11 @@
  *     
  *     CS40 hw1 FilesofPix
  *
- *     Summary: 
- * 
+ *     Summary: This is the implementation file of the readaline function. This
+ *              program receives as parameters an opened FILE and a pointer to a
+ *              cstring. Reads in one row of the files at a time, returns number
+ *              of bytes of the line, implicitly returns the content of the line
+ *              by editing the char* pointed to by datapp.
  */
 
 #include <stdbool.h>
@@ -31,24 +34,19 @@
  *      number of bytes, once to store the contents of the line. */
 size_t readaline(FILE *inputfd, char **datapp) 
 {
-        // error check user input 
+        /* error check user input */
         if (inputfd == NULL || *datapp == NULL) {
-                fprintf(stderr, "Error: Invalid input. inputfd NULL\n");
-                exit(1);
-        }
-
-        if (*datapp == NULL) {
-                fprintf(stderr, "Error: Invalid input. datapp NULL\n");
+                fprintf(stderr, "Error: Invalid input.\n");
                 exit(1);
         }
 
         char currChar = fgetc(inputfd);
-        if (currChar == EOF) { // edge case: file is at eof
+        if (currChar == EOF) { /* edge case: file is at eof */
                 *datapp = NULL;
                 return 0;
         }
 
-        // loop thru file to get number of bytes in a line
+        /* loop thru file to get number of bytes in a line */
         long int numBytes = 1;
         while (currChar != '\n' && currChar != EOF) 
         {
@@ -58,17 +56,16 @@ size_t readaline(FILE *inputfd, char **datapp)
                 }
         }
 
-        *datapp = (char*) malloc (numBytes); // allocate memory for the line 
-        // check if memory allocation succeeded
+        *datapp = (char*) malloc (numBytes); /* allocate memory for the line */
+        /* check if memory allocation succeeded */
         if (*datapp == NULL) {
                 fprintf(stderr, "Error: Memory allocation failed.\n");
                 exit(1);
         }
 
-        // move file pointer back to start of the line
+        /* move file pointer back to start of the line */
         fseek(inputfd, -numBytes, SEEK_CUR);
-
-        // read line one char at a time and store it in datapp
+        /* read line one char at a time and store it in datapp */
         for (int i = 0; i < numBytes; i++) {
                 (*datapp)[i] = (char)fgetc(inputfd);
         }
