@@ -1,0 +1,26 @@
+/*
+*     README
+*     Agatha Yang (ayang15), Alina Xie (axie04)
+*     Date: 1/21/25   
+*     CS40 hw1 FilesofPix
+*/
+
+Acknowledgements: 
+    TAs, 
+    geeksforgeeks, stackoverflow for explanations of functions in the string
+    library. 
+
+Correctly implemented: 
+    We successfully implemented the readline.c file and the restoration.c file.
+    The readaline file allocates memory onto the heap to read a line from an 
+    input file and store it in the allocated memory. It also uses readaline.h.
+    The restoration.c file uses the functionality readaline to de-corrupt a 
+    corrupted image file and print it in its pgm format. 
+
+Incorrectly implemented:
+    We did not correctly implement the strnlen and strcpy function in the 
+    <string.h> library, which caused invalid read errors when running 
+    valgrind.
+
+Time spent: 
+    70 hours

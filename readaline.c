@@ -35,7 +35,7 @@
 size_t readaline(FILE *inputfd, char **datapp) 
 {
         /* error check user input */
-        if (inputfd == NULL || *datapp == NULL) {
+        if (inputfd == NULL || datapp == NULL) {
                 fprintf(stderr, "Error: Invalid input.\n");
                 exit(1);
         }
@@ -56,7 +56,12 @@ size_t readaline(FILE *inputfd, char **datapp)
                 }
         }
 
-        *datapp = (char*) malloc (numBytes); /* allocate memory for the line */
+        if (numBytes > 1000) {
+                fprintf(stderr, "readaline: input line too long\n");
+                exit(4);
+        }
+
+        *datapp = (char*)malloc (numBytes + 1); /* allocate memory for the line */
         /* check if memory allocation succeeded */
         if (*datapp == NULL) {
                 fprintf(stderr, "Error: Memory allocation failed.\n");
@@ -64,11 +69,12 @@ size_t readaline(FILE *inputfd, char **datapp)
         }
 
         /* move file pointer back to start of the line */
-        fseek(inputfd, -numBytes, SEEK_CUR);
+        fseek(inputfd, -(numBytes + 1), SEEK_CUR);
         /* read line one char at a time and store it in datapp */
-        for (int i = 0; i < numBytes; i++) {
+        for (int i = 0; i < (numBytes + 1); i++) {
                 (*datapp)[i] = (char)fgetc(inputfd);
         }
 
+        (*datapp)[numBytes] = '\0';
         return numBytes;
 }

@@ -34,6 +34,8 @@
 #include "table.h"
 #include "seq.h"
 
+#include "pnmrdr.h"
+
 #define DEBUG true
 
 int getLength(char **currline, size_t numBytes, int *alphaSize, int *pixSize);
@@ -66,7 +68,7 @@ void printPgm(struct Seq_T* ogRows, int width, int height);
 int main(int argc, char *argv[])
 {
         FILE *inputFile;
-        
+
         /* error check */
         if (argc == 1) {
                 inputFile = stdin;
@@ -75,7 +77,7 @@ int main(int argc, char *argv[])
         }
 
         char* firstOgLine = ""; /* first valid line */
-        char* currline = "";
+        char* currline = NULL;
         char* currPattern = ""; /* current injected chars */
         const char* ogPattern = NULL; /* pattern representing valid line */
         size_t numBytes = 0; /* length of entire row */
@@ -93,68 +95,70 @@ int main(int argc, char *argv[])
         /* retrieve data from file */
         while (true) 
         {       
-                printf("Gonna read a line!\n");
-
                 /* read in a new line from the file */
                 numBytes = readaline(inputFile, &currline);
+
                 if (numBytes == 0) {
-                        // reading past end of line
-                        printf("numBytes is zero, we read past eof! Breaking..\n");
+                        /* reading past end of line */
+                        if(currline != NULL) {
+                                free(currline);
+                        }
+                        currline = NULL;
                         break;
                 }
                 
                 /* extract injected non-numeric chars */
                 if (getLength(&currline, numBytes, &alphaSize, &pixSize) < 0) {
                         /* current line is a fake row and is skipped */
-                        printf("current line is a fake row, skipping this line..\n");
+                        if(currline != NULL) {
+                                free(currline);
+                        }
+                        currline = NULL;
                         continue;
                 }
                 getPattern(&currline, numBytes, &alphaSize, &currPattern); 
-                printf("currLine: %s", currline);
                 
                 if (ogPattern == NULL) {
                         /* we haven't found the injected pattern yet */
                         const char* injected = Atom_new(currPattern, alphaSize);
                         firstOgLine = Table_put(uniqueInjs, injected, currline); 
 
-                        if (firstOgLine == NULL) {
-                                /* we haven't encountered a collision in table */
-                                printf("A unique pattern! %s\n", injected);
-
-                        } else {
+                        if (firstOgLine != NULL) {
                                 /* we have found the ogPattern! */
-                                printf("Aha! A recurring pattern: %s\n", injected);
                                 /* record the pattern */
                                 ogPattern = injected; 
 
-                                printf("About to add first line into seq...\n");
                                 /* add firstOgLine to sequence */
                                 addToSeq(&firstOgLine, ogRows);
                                 /* add current line to sequence */
-                                printf("About to add second line into seq...\n");
                                 addToSeq(&currline, ogRows); 
 
                                 /* update height */
                                 height = 2; 
-                                printf("Finished adding first and second ogLines to Seq!\n");
                         }
                 } else {
                         // we have already found the pattern, horray!
                         if (isOriginal(&currPattern, &ogPattern, alphaSize)) {
                                 /* currline is an origial line */
                                 height++; 
-                                printf("Found an original line! Going to call addToSeq...\n");
                                 addToSeq(&currline, ogRows);
-
-                                printf("Returned from addToSeq! Injected Seq: %s. Height is now %d", currPattern, height);
                         } else {
                                 /* currline is not original, release memory */ 
-                                free(currline);
+                                Table_remove(uniqueInjs, ogPattern);
+                                const char* injected 
+                                        = Atom_new(currPattern, alphaSize);
+                                Table_put(uniqueInjs, injected, currline);
+                                ogPattern = NULL;
                         }
+                        
                 }
-                alphaSize = 0; /* reset alphaSize */
+                if (currline != NULL) {
+                                free(currline);
+                }
+                currline = NULL;
                 free(currPattern); /* release memory for currPattern */
-        }             
+        }
+
         printPgm(ogRows, pixSize, height); /* print out pgm */
 
         Table_free(&uniqueInjs); /* free the table */
@@ -184,8 +188,7 @@ int main(int argc, char *argv[])
  *      individual digits of a integer as a separate int needing 4 bytes. */
 int getLength(char **currline, size_t numBytes, int *alphaSize, int *pixSize)
 {     
-        printf("Entered getLength!\n");
-        char prevChar = 'b'; /* b is an arbitrary placeholder */
+        char prevChar = 'b';
         int currPixLen = 0;
         *alphaSize = 0;
         *pixSize = 0;
@@ -197,10 +200,11 @@ int getLength(char **currline, size_t numBytes, int *alphaSize, int *pixSize)
                         if (currPixLen >= 3) {
                                 int sum = 0;
                                 if(currPixLen == 3) {
-                                        /* caluculate value of 3 digit number */
-                                        sum += (int)(*currline)[i - 1];
-                                        sum += (*currline)[i - 2] * 10; 
-                                        sum += (*currline)[i - 3] * 100;
+                                        /* caluculates value of 3 digit number */
+                                        sum += (int)(((*currline)[i - 1]) - '0');
+                                        sum += (int)((((*currline)[i - 2]) - 
+                                               '0') * 10); 
+                                        sum += (int)((((*currline)[i - 3]) - '0') * 100);
                                 }
                                 if(currPixLen >= 4 || sum > 255) {
                                         return -1;
@@ -215,10 +219,13 @@ int getLength(char **currline, size_t numBytes, int *alphaSize, int *pixSize)
                 } else {
                         (*alphaSize)++;
                 }
-
                 prevChar = (*currline)[i]; /* set prev to curr */
         }
-        printf("Going to exit from getLength, pattern size is %d\n", (*alphaSize));
+        
+        if(isdigit((*currline)[numBytes - 1])) {
+                (*pixSize)++;
+        }
+
         return 0;
 }
 
@@ -272,19 +279,15 @@ void getPattern(char **currLine, size_t numBytes, int *alphaSize,
  * 
  * Expects: char** to not be NULL */
 void addToSeq(char** ogRow, struct Seq_T* ogRows)
-{       
-        printf("In addToSeq()!\n");
-
+{    
         /* make a deep copy of the current row */
         size_t length = strlen(*ogRow) + 1; /* add one for null */
-        char* lineDup = (char*)malloc(length);
-        strcpy(lineDup, *ogRow); /* copy contents into dup */
+        char* lineDup = malloc(length);
+
+        strncpy(lineDup, *ogRow, length); /* copy contents into dup */
+        lineDup[length - 1] = '\0';
 
         Seq_addhi(ogRows, lineDup);
-
-        if (DEBUG) {
-                printf("Added line %s to Seq!\n", *ogRow);
-        }
 }
 
 /* isOriginal
@@ -346,15 +349,9 @@ void printPgm(struct Seq_T* ogRows, int width, int height)
                 /* retreive a line */
                 currline = Seq_get(ogRows, i);
 
-                if (currline == NULL) {
-                        printf("The line we are about to print doesn't exist haha\n");
-                        exit(1);
-                }
-
                 /* loop thru the corrupted line */
                 for (int j = 0; (currline)[j] != '\0'; j++) 
                 {       
-                        // printf("Entered for loop, row index: %d, col index: %d\n", i, j);
                         if (isdigit((currline)[j])) {
                                 /* current char is a digit, add to pixVal */
                                 pixVal = (pixVal * 10) + ((currline)[j] - '0'); 
@@ -363,16 +360,13 @@ void printPgm(struct Seq_T* ogRows, int width, int height)
                                 /* current char is an injection */
                                 if (prevChar != '\0' && isdigit(prevChar)) {
                                         /* a pixel value has just ended */
-                                        printf("%d ", pixVal); /* print ASCII */
+                                        printf("%c", pixVal); /* print ASCII */
                                         pixVal = 0; /* reset pixVal */
-                                }
-                                /* add a newline if we're at the end of a row */
-                                if ((currline)[j] == '\n') {
-                                        printf("\n");
                                 }
                         }
                         /* set prev char to current char */
                         prevChar = (currline)[j];
                 }
+                free(currline);
         }
 }
